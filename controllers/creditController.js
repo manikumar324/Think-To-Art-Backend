@@ -7,7 +7,6 @@ const plans = [
   { _id: "premium", name: "Premium", price: 30, credits: 1000, features: ['1000 text generations', '500 image generations', '24/7 VIP support', 'Access to premium models', 'Dedicated account manager'] }
 ];
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const getPlans = async (req, res) => {
   try {
@@ -17,14 +16,17 @@ export const getPlans = async (req, res) => {
   }
 };
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 export const purchasePlan = async (req, res) => {
   try {
     const { planId } = req.body;
     const userId = req.user.userId;
+
     const plan = plans.find(p => p._id === planId);
     if (!plan) return res.json({ success: false, message: "Invalid Plan" });
 
-    // 1️⃣ Create transaction first
+    // 1️⃣ Create transaction
     const transaction = await Transaction.create({
       userId,
       planId: plan._id,
@@ -33,7 +35,7 @@ export const purchasePlan = async (req, res) => {
       isPaid: false
     });
 
-    // 2️⃣ Create Stripe Checkout session with metadata
+    // 2️⃣ Create Stripe Checkout session
     const origin = req.headers.origin.replace(/\/$/, "");
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -51,7 +53,7 @@ export const purchasePlan = async (req, res) => {
       metadata: {
         transactionId: transaction._id.toString(),
         appId: "Quickgpt",
-        userId // ✅ important for webhook
+        userId
       },
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60
     });

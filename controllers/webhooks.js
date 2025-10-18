@@ -5,37 +5,31 @@ import User from "../models/User.js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const stripeWebHooks = async (req, res) => {
-  console.log("⚡ Webhook received");
   const sig = req.headers["stripe-signature"];
   let event;
 
   try {
-    if (sig) {
-      event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-      console.log("✔ Stripe signature verified");
-    } else {
-      event = req.body;
-      console.log("⚡ Test POST received (signature skipped)");
-    }
+    event = sig
+      ? stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET)
+      : req.body;
   } catch (err) {
-    console.error("❌ Webhook signature verification failed:", err.message);
+    console.error("Webhook signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  console.log("🔥 Event type:", event.type || "TEST_EVENT");
-  console.log("Metadata:", event.data?.object?.metadata || event.metadata || {});
+  console.log("Webhook event type:", event.type);
 
-  if (event.type === "checkout.session.completed" || event.type === "TEST_EVENT") {
-    const session = event.data?.object || event;
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
     const { transactionId, appId, userId } = session.metadata || {};
 
-    if (!transactionId || appId !== "Quickgpt" || !userId) {
-      console.log("❌ Invalid metadata or appId:", session.metadata);
+    if (!transactionId || !appId || !userId) {
+      console.log("❌ Invalid metadata:", session.metadata);
       return res.json({ received: true });
     }
 
     try {
-      // Mark transaction as paid
+      // 1️⃣ Mark transaction as paid
       const transaction = await Transaction.findOneAndUpdate(
         { _id: transactionId, isPaid: false },
         { $set: { isPaid: true } },
@@ -47,7 +41,7 @@ export const stripeWebHooks = async (req, res) => {
         return res.json({ received: true });
       }
 
-      // Increment user credits using userId from metadata
+      // 2️⃣ Increment user credits
       const updatedUser = await User.findOneAndUpdate(
         { _id: userId },
         { $inc: { credits: transaction.credits } },
@@ -59,9 +53,9 @@ export const stripeWebHooks = async (req, res) => {
         return res.status(500).json({ message: "User not found" });
       }
 
-      console.log(`✅ Transaction ${transactionId} paid and user ${updatedUser._id} credits updated (+${transaction.credits})`);
+      console.log(`✅ Transaction ${transactionId} paid, user ${updatedUser._id} credits updated (+${transaction.credits})`);
     } catch (err) {
-      console.error("❌ Error updating transaction/user:", err);
+      console.error("Error updating transaction/user:", err);
       return res.status(500).json({ message: "Internal Server Error" });
     }
   }
