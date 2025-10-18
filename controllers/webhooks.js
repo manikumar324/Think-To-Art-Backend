@@ -2,8 +2,6 @@ import Stripe from "stripe";
 import Transaction from "../models/Transaction.js";
 import User from "../models/User.js";
 
-
-// ⚠ stripe must be initialized here, before using it anywhere
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const stripeWebHooks = async (req, res) => {
@@ -13,11 +11,7 @@ export const stripeWebHooks = async (req, res) => {
 
   try {
     if (sig) {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
+      event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
       console.log("✔ Stripe signature verified");
     } else {
       event = req.body;
@@ -33,15 +27,15 @@ export const stripeWebHooks = async (req, res) => {
 
   if (event.type === "checkout.session.completed" || event.type === "TEST_EVENT") {
     const session = event.data?.object || event;
-    const { transactionId, appId,userId } = session.metadata || {};
+    const { transactionId, appId, userId } = session.metadata || {};
 
-    if (!transactionId || appId !== "Quickgpt") {
+    if (!transactionId || appId !== "Quickgpt" || !userId) {
       console.log("❌ Invalid metadata or appId:", session.metadata);
       return res.json({ received: true });
     }
 
     try {
-      // Atomically mark transaction as paid
+      // Mark transaction as paid
       const transaction = await Transaction.findOneAndUpdate(
         { _id: transactionId, isPaid: false },
         { $set: { isPaid: true } },
@@ -53,7 +47,7 @@ export const stripeWebHooks = async (req, res) => {
         return res.json({ received: true });
       }
 
-      // Increment user credits
+      // Increment user credits using userId from metadata
       const updatedUser = await User.findOneAndUpdate(
         { _id: userId },
         { $inc: { credits: transaction.credits } },
@@ -61,13 +55,11 @@ export const stripeWebHooks = async (req, res) => {
       );
 
       if (!updatedUser) {
-        console.log("❌ User not found:", transaction.userId);
+        console.log("❌ User not found:", userId);
         return res.status(500).json({ message: "User not found" });
       }
 
-      console.log(
-        `✅ Transaction ${transactionId} marked as paid and user ${updatedUser._id} credits updated (+${transaction.credits})`
-      );
+      console.log(`✅ Transaction ${transactionId} paid and user ${updatedUser._id} credits updated (+${transaction.credits})`);
     } catch (err) {
       console.error("❌ Error updating transaction/user:", err);
       return res.status(500).json({ message: "Internal Server Error" });

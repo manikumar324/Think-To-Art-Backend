@@ -2,27 +2,9 @@ import Transaction from "../models/Transaction.js";
 import Stripe from "stripe";
 
 const plans = [
-  {
-    _id: "basic",
-    name: "Basic",
-    price: 10,
-    credits: 100,
-    features: ['100 text generations', '50 image generations', 'Standard support', 'Access to basic models']
-  },
-  {
-    _id: "pro",
-    name: "Pro",
-    price: 20,
-    credits: 500,
-    features: ['500 text generations', '200 image generations', 'Priority support', 'Access to pro models', 'Faster response time']
-  },
-  {
-    _id: "premium",
-    name: "Premium",
-    price: 30,
-    credits: 1000,
-    features: ['1000 text generations', '500 image generations', '24/7 VIP support', 'Access to premium models', 'Dedicated account manager']
-  }
+  { _id: "basic", name: "Basic", price: 10, credits: 100, features: ['100 text generations', '50 image generations', 'Standard support', 'Access to basic models'] },
+  { _id: "pro", name: "Pro", price: 20, credits: 500, features: ['500 text generations', '200 image generations', 'Priority support', 'Access to pro models', 'Faster response time'] },
+  { _id: "premium", name: "Premium", price: 30, credits: 1000, features: ['1000 text generations', '500 image generations', '24/7 VIP support', 'Access to premium models', 'Dedicated account manager'] }
 ];
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -38,9 +20,8 @@ export const getPlans = async (req, res) => {
 export const purchasePlan = async (req, res) => {
   try {
     const { planId } = req.body;
-    const userId = req.user.userId; // From auth middleware
+    const userId = req.user.userId;
     const plan = plans.find(p => p._id === planId);
-
     if (!plan) return res.json({ success: false, message: "Invalid Plan" });
 
     // 1️⃣ Create transaction first
@@ -52,8 +33,8 @@ export const purchasePlan = async (req, res) => {
       isPaid: false
     });
 
-    // 2️⃣ Create Stripe Checkout session
-    const origin = req.headers.origin.replace(/\/$/, ""); // remove trailing slash
+    // 2️⃣ Create Stripe Checkout session with metadata
+    const origin = req.headers.origin.replace(/\/$/, "");
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [{
@@ -70,13 +51,12 @@ export const purchasePlan = async (req, res) => {
       metadata: {
         transactionId: transaction._id.toString(),
         appId: "Quickgpt",
-        userId: req.user.userId // add this line
+        userId // ✅ important for webhook
       },
-      expires_at: Math.floor(Date.now() / 1000) + 30 * 60 // 30 minutes
+      expires_at: Math.floor(Date.now() / 1000) + 30 * 60
     });
 
     return res.json({ success: true, url: session.url });
-
   } catch (error) {
     console.error("Purchase Plan Error:", error);
     return res.json({ success: false, message: error.message });
