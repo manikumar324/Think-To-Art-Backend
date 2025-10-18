@@ -1,4 +1,3 @@
-// controllers/webhooks.js
 import Stripe from "stripe";
 import Transaction from "../models/Transaction.js";
 import User from "../models/User.js";
@@ -11,75 +10,88 @@ export const stripeWebHooks = async (req, res) => {
   let event;
 
   try {
-    if (sig) {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-      console.log("✔ Stripe signature verified");
-    } else {
-      event = req.body;
-      console.log("⚡ Test POST received (signature skipped)");
-    }
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    console.log("✔ Stripe signature verified");
   } catch (err) {
     console.error("❌ Webhook signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  console.log("🔥 Event type:", event.type || "TEST_EVENT");
+  console.log("🔥 Event type:", event.type);
 
-  // ✅ Handle the payment intent succeeded event
-  if (event.type === "payment_intent.succeeded") {
-    const paymentIntent = event.data.object;
-    console.log("💳 PaymentIntent ID:", paymentIntent.id);
-    console.log("Metadata:", paymentIntent.metadata);
+  // 🧠 Handle checkout.session.completed first (most reliable)
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const { transactionId, appId, userId } = session.metadata || {};
 
-    const { transactionId, appId, userId } = paymentIntent.metadata || {};
+    console.log("🧾 Checkout Metadata:", session.metadata);
 
-    if (!transactionId || appId !== "QuickGPT" || !userId) {
-      console.log("❌ Invalid or missing metadata:", paymentIntent.metadata);
+    if (!transactionId || appId !== "Quickgpt" || !userId) {
+      console.log("❌ Invalid metadata:", session.metadata);
       return res.json({ received: true });
     }
 
     try {
-      // Mark transaction as paid
-      const transaction = await Transaction.findOneAndUpdate(
-        { _id: transactionId, isPaid: false },
-        { $set: { isPaid: true } },
-        { new: true }
-      );
+      let transaction = await Transaction.findById(transactionId);
 
       if (!transaction) {
-        console.log("❌ Transaction not found or already paid:", transactionId);
+        console.log("❌ Transaction not found:", transactionId);
         return res.json({ received: true });
       }
 
-      // Increment user credits
-      const updatedUser = await User.findOneAndUpdate(
-        { _id: userId },
-        { $inc: { credits: transaction.credits } },
-        { new: true }
-      );
+      // ✅ Always update if not paid yet
+      if (!transaction.isPaid) {
+        transaction.isPaid = true;
+        await transaction.save();
 
-      if (!updatedUser) {
-        console.log("❌ User not found:", userId);
-        return res.status(500).json({ message: "User not found" });
+        const updatedUser = await User.findByIdAndUpdate(
+          userId,
+          { $inc: { credits: transaction.credits } },
+          { new: true }
+        );
+
+        console.log(`✅ User ${updatedUser?._id} credited (+${transaction.credits}) for transaction ${transactionId}`);
       }
-
-      console.log(
-        `✅ Transaction ${transactionId} marked paid. User ${updatedUser._id} credited (+${transaction.credits}).`
-      );
-    } catch (err) {
-      console.error("❌ Error updating transaction/user:", err);
-      return res.status(500).json({ message: "Internal Server Error" });
+    } catch (error) {
+      console.error("❌ Error updating transaction/user:", error);
     }
   }
 
-  // ✅ Optional: Handle checkout.session.completed for test events
-  else if (event.type === "checkout.session.completed" || event.type === "TEST_EVENT") {
-    const session = event.data?.object || event;
-    console.log("🧾 Checkout Session Metadata:", session.metadata);
+  // ⚙️ Backup for payment_intent.succeeded if checkout.session.completed was missed
+  else if (event.type === "payment_intent.succeeded") {
+    const paymentIntent = event.data.object;
+    const { transactionId, appId, userId } = paymentIntent.metadata || {};
+
+    console.log("💳 Payment Intent Metadata:", paymentIntent.metadata);
+
+    if (!transactionId || appId !== "Quickgpt" || !userId) {
+      console.log("❌ Invalid metadata for payment intent:", paymentIntent.metadata);
+      return res.json({ received: true });
+    }
+
+    try {
+      let transaction = await Transaction.findById(transactionId);
+
+      if (!transaction) {
+        console.log("❌ Transaction not found:", transactionId);
+        return res.json({ received: true });
+      }
+
+      if (!transaction.isPaid) {
+        transaction.isPaid = true;
+        await transaction.save();
+
+        const updatedUser = await User.findByIdAndUpdate(
+          userId,
+          { $inc: { credits: transaction.credits } },
+          { new: true }
+        );
+
+        console.log(`✅ [Backup] User ${updatedUser?._id} credited (+${transaction.credits}) for transaction ${transactionId}`);
+      }
+    } catch (error) {
+      console.error("❌ Error updating transaction/user (payment intent):", error);
+    }
   }
 
   res.json({ received: true });
