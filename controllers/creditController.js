@@ -91,7 +91,7 @@ export const purchasePlan = async (req, res) => {
         metadata: {
           transactionId: transaction._id.toString(),
           userId: req.user.userId,
-          appId: "QuickGPT",
+          appId: "Quickgpt",
         },
       },
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // 30 minutes
