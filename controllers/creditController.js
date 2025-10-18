@@ -69,7 +69,8 @@ export const purchasePlan = async (req, res) => {
       cancel_url: `${origin}`,
       metadata: {
         transactionId: transaction._id.toString(),
-        appId: "Quickgpt"
+        appId: "Quickgpt",
+        userId: req.user.userId // add this line
       },
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60 // 30 minutes
     });

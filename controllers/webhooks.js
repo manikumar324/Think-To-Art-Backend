@@ -33,7 +33,7 @@ export const stripeWebHooks = async (req, res) => {
 
   if (event.type === "checkout.session.completed" || event.type === "TEST_EVENT") {
     const session = event.data?.object || event;
-    const { transactionId, appId } = session.metadata || {};
+    const { transactionId, appId,userId } = session.metadata || {};
 
     if (!transactionId || appId !== "Quickgpt") {
       console.log("❌ Invalid metadata or appId:", session.metadata);
@@ -55,7 +55,7 @@ export const stripeWebHooks = async (req, res) => {
 
       // Increment user credits
       const updatedUser = await User.findOneAndUpdate(
-        { _id: transaction.userId },
+        { _id: userId },
         { $inc: { credits: transaction.credits } },
         { new: true }
       );
