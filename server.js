@@ -21,7 +21,10 @@ app.post('/api/stripe', express.raw({type : 'application/json'}), stripeWebHooks
 //middleware
 
 app.use(cors({
-    origin: process.env.FRONTEND_URL,  // your deployed frontend URL
+    origin: [
+        process.env.LOCAL_FRONTEND_URL,    // your LOCAL frontend URL
+        process.env.DEPLOYED_FRONTEND_URL  // your DEPLOYED frontend URL
+    ],
     credentials: true                 // allow cookies
 }));
 app.use(express.json());
