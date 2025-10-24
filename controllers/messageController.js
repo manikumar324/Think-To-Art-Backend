@@ -78,7 +78,7 @@ export const imageMessageController = async (req, res) => {
    const encodedPrompt = encodeURIComponent(prompt);
 
    //construct the ImageKit AI generation URL
-   const generatedImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/Quickgpt/${Date.now()}.png?tr=w-800,h-800`;
+   const generatedImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/thinktoart/${Date.now()}.png?tr=w-800,h-800`;
 
    // Terigger generation by fetching the ImageKit URL
    const aiImageResponse = await axios.get(generatedImageUrl, {responseType: 'arraybuffer'});
@@ -90,7 +90,7 @@ export const imageMessageController = async (req, res) => {
    const uploadResponse = await imagekit.upload({
     file : base64Image,
     fileName : `${Date.now()}.png`,
-    folder : "Quickgpt"
+    folder : "thinktoart"
    })
    const reply={
         role: "assistant",

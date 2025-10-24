@@ -51,7 +51,7 @@ export const getAllChats = async (req, res) => {
 export const deleteChat = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { chatId } = req.body;
+    const { chatId } = req.params;
 
     if (!chatId) {
       return res

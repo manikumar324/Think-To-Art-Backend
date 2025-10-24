@@ -77,10 +77,9 @@ export const loginUser = async (req, res) => {
 export const getUserData = async (req, res) => {
     try {
         const userId = req.user.userId; // comes from authMiddleware
-        // const user = await User.findById(userId).select('-password'); // fetch user from DB without password
-        const user = await User.find(); // fetch all users data
+        const user = await User.findById(userId).select('-password'); // fetch user from DB without password
+        // const user = await User.find(); // fetch all users data
         if (!user) {
-            
             return res.status(404).json({ message: "User not found" });
         }
         console.log("User Details :-",user)
