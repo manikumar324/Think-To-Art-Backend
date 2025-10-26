@@ -54,11 +54,10 @@ export const textMessageController = async (req, res) => {
 
 //Image Generation message controller
 export const imageMessageController = async (req, res) => {
-  console.log("🟢 Image message controller triggered");
-
+   console.log("🟢 Image message controller triggered");
   try {
     const userId = req.user.userId;
-
+    //check credits
     // ✅ Fetch user and check credits
     const user = await User.findById(userId);
     if (!user) {
@@ -67,56 +66,58 @@ export const imageMessageController = async (req, res) => {
     if (user.credits < 2) {
       return res.status(403).json({ success: false, message: "Not enough credits" });
     }
-
-    const { chatId, prompt, isPublished } = req.body;
-
-    // ✅ Find the chat belonging to the user
+    const { chatId, prompt,isPublished } = req.body;
+    //To find the particular chat
     const chat = await Chat.findOne({ _id: chatId, userId });
-    if (!chat) {
-      return res.status(404).json({ success: false, message: "Chat not found" });
-    }
-
-    // ✅ Push user's message to chat
+    //Push User message to chat
     chat.messages.push({
       role: "user",
-      content: prompt,
-      timestamp: Date.now(),
-      isImage: true,
+        content: prompt,
+        timestamp: Date.now(),
+        isImage: true,
     });
+   //encode the prompt to base64
+   const encodedPrompt = encodeURIComponent(prompt);
 
-    // ✅ Generate the ImageKit AI URL directly (no axios.get or upload)
-    const encodedPrompt = encodeURIComponent(prompt);
-    const generatedImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/thinktoart/${Date.now()}.png?tr=w-800,h-800`;
+   //construct the ImageKit AI generation URL
+   const generatedImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/thinktoart/${Date.now()}.png?tr=w-800,h-800`;
 
-    // ✅ Prepare assistant's reply (AI image)
-    const reply = {
-      role: "assistant",
-      content: generatedImageUrl,
-      timestamp: Date.now(),
-      isImage: true,
-      isPublished,
-    };
+   // Trigger generation by fetching the ImageKit URL
+   const aiImageResponse = await axios.get(generatedImageUrl, {responseType: 'arraybuffer'});
 
-    // ✅ Push reply and save
-    chat.messages.push(reply);
-    await chat.save();
+   // convert to base 64
+   const base64Image = `data:image/png;base64,${Buffer.from(aiImageResponse.data,"binary").toString('base64')}`;
 
-    // ✅ Deduct 2 credits
-    await User.updateOne({ _id: userId }, { $inc: { credits: -2 } });
-
-    console.log("✅ Image generated successfully:", generatedImageUrl);
-    return res.status(200).json({ success: true, reply });
-  } catch (error) {
-    console.log("❌ Error in Image Message Controller:", error.message);
-    if (error.response) {
-      console.log("Status:", error.response.status);
-      console.log("Response data:", error.response.data?.toString());
+   //Upload to ImageKit Media Library
+   const uploadResponse = await imagekit.upload({
+    file : base64Image,
+    fileName : `${Date.now()}.png`,
+    folder : "thinktoart"
+   })
+   const reply={
+        role: "assistant",
+        content : uploadResponse.url,
+        timestamp : Date.now(),
+        isImage : true,
+        isPublished
     }
-    return res.status(500).json({ success: false, message: error.message });
+
+   chat.messages.push(reply)
+   await chat.save();
+   await User.updateOne({_id:userId}, { $inc: { "credits": -2 } });
+    return res.status(200).json({success : true, reply})
+
+ } catch (error) {
+  console.log("Error in Image Message Controller:-", error.message);
+  if (error.response) {
+    console.log("Status:", error.response.status);
+    console.log("Response data:", error.response.data?.toString());
   }
+  return res.status(500).json({ success: false, message: error.message });
+}
 };
 
-
+//if we get any error while generating a image make sure you have updated the new environmental variables in local and deployed (render)
 //This api call is for jusr checking the image generation purpose
 // export const testController =  async (req, res) => {
 //   try {
