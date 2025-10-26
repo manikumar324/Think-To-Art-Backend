@@ -8,6 +8,7 @@ import imagekit from "../configs/imageKit.js";
 //Text-based AI message controller
 
 export const textMessageController = async (req, res) => {
+   console.log("🟢 Text message controller triggered");
   try {
     const userId = req.user.userId;
     // ✅ Fetch user and check credits
@@ -53,9 +54,11 @@ export const textMessageController = async (req, res) => {
 
 //Image Generation message controller
 export const imageMessageController = async (req, res) => {
+  console.log("🟢 Image message controller triggered");
+
   try {
     const userId = req.user.userId;
-    //check credits
+
     // ✅ Fetch user and check credits
     const user = await User.findById(userId);
     if (!user) {
@@ -64,49 +67,67 @@ export const imageMessageController = async (req, res) => {
     if (user.credits < 2) {
       return res.status(403).json({ success: false, message: "Not enough credits" });
     }
-    const { chatId, prompt,isPublished } = req.body;
-    //To find the particular chat
+
+    const { chatId, prompt, isPublished } = req.body;
+
+    // ✅ Find the chat belonging to the user
     const chat = await Chat.findOne({ _id: chatId, userId });
-    //Push User message to chat
-    chat.messages.push({
-      role: "user",
-        content: prompt,
-        timestamp: Date.now(),
-        isImage: true,
-    });
-   //encode the prompt to base64
-   const encodedPrompt = encodeURIComponent(prompt);
-
-   //construct the ImageKit AI generation URL
-   const generatedImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/thinktoart/${Date.now()}.png?tr=w-800,h-800`;
-
-   // Terigger generation by fetching the ImageKit URL
-   const aiImageResponse = await axios.get(generatedImageUrl, {responseType: 'arraybuffer'});
-
-   // convert to base 64
-   const base64Image = `data:image/png;base64,${Buffer.from(aiImageResponse.data,"binary").toString('base64')}`;
-
-   //Upload to ImageKit Media Library
-   const uploadResponse = await imagekit.upload({
-    file : base64Image,
-    fileName : `${Date.now()}.png`,
-    folder : "thinktoart"
-   })
-   const reply={
-        role: "assistant",
-        content : uploadResponse.url,
-        timestamp : Date.now(),
-        isImage : true,
-        isPublished
+    if (!chat) {
+      return res.status(404).json({ success: false, message: "Chat not found" });
     }
 
-   chat.messages.push(reply)
-   await chat.save();
-   await User.updateOne({_id:userId}, { $inc: { "credits": -2 } });
-    return res.status(200).json({success : true, reply})
+    // ✅ Push user's message to chat
+    chat.messages.push({
+      role: "user",
+      content: prompt,
+      timestamp: Date.now(),
+      isImage: true,
+    });
 
+    // ✅ Generate the ImageKit AI URL directly (no axios.get or upload)
+    const encodedPrompt = encodeURIComponent(prompt);
+    const generatedImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/thinktoart/${Date.now()}.png?tr=w-800,h-800`;
+
+    // ✅ Prepare assistant's reply (AI image)
+    const reply = {
+      role: "assistant",
+      content: generatedImageUrl,
+      timestamp: Date.now(),
+      isImage: true,
+      isPublished,
+    };
+
+    // ✅ Push reply and save
+    chat.messages.push(reply);
+    await chat.save();
+
+    // ✅ Deduct 2 credits
+    await User.updateOne({ _id: userId }, { $inc: { credits: -2 } });
+
+    console.log("✅ Image generated successfully:", generatedImageUrl);
+    return res.status(200).json({ success: true, reply });
   } catch (error) {
-    console.log("Error in Image Message Controller:- ", error.message);
-    return res.status(500).json({ success: "false", message: error.message });
+    console.log("❌ Error in Image Message Controller:", error.message);
+    if (error.response) {
+      console.log("Status:", error.response.status);
+      console.log("Response data:", error.response.data?.toString());
+    }
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+//This api call is for jusr checking the image generation purpose
+// export const testController =  async (req, res) => {
+//   try {
+//     const prompt = "a cute cat wearing sunglasses";
+//     const encodedPrompt = encodeURIComponent(prompt);
+//     const url = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/thinktoart/test.png`;
+
+//     const aiRes = await axios.get(url);
+//     res.send("✅ AI generation works fine!");
+//   } catch (err) {
+//     console.error("❌ Test AI error:", err.response?.status, err.response?.data);
+//     res.status(500).json({ error: err.response?.data });
+//   }
+// };

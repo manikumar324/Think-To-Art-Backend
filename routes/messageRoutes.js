@@ -6,6 +6,7 @@ const messageRouter = express.Router();
 
 messageRouter.post('/text', authMiddleware, textMessageController)
 messageRouter.post('/image', authMiddleware, imageMessageController)
+// messageRouter.get("/test",authMiddleware,testController)
 
 
 export default messageRouter;
