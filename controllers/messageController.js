@@ -61,22 +61,16 @@ export const imageMessageController = async (req, res) => {
 
     // ✅ Fetch user and check credits
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-    if (user.credits < 2) {
-      return res.status(403).json({ success: false, message: "Not enough credits" });
-    }
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    if (user.credits < 2) return res.status(403).json({ success: false, message: "Not enough credits" });
 
     const { chatId, prompt, isPublished } = req.body;
 
-    // ✅ Find the chat belonging to the user
+    // ✅ Find the chat
     const chat = await Chat.findOne({ _id: chatId, userId });
-    if (!chat) {
-      return res.status(404).json({ success: false, message: "Chat not found" });
-    }
+    if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
 
-    // ✅ Push user's message to chat
+    // ✅ Push user's message
     chat.messages.push({
       role: "user",
       content: prompt,
@@ -84,28 +78,28 @@ export const imageMessageController = async (req, res) => {
       isImage: true,
     });
 
-    // ✅ Generate the ImageKit AI URL directly (no axios.get or upload)
+    // ✅ Generate the ImageKit AI URL (no axios.get)
     const encodedPrompt = encodeURIComponent(prompt);
-    const generatedImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/thinktoart/${Date.now()}.png?tr=w-800,h-800`;
+    const aiImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/thinktoart/${Date.now()}.png?tr=w-800,h-800`;
 
-    // ✅ Prepare assistant's reply (AI image)
+    // ✅ Assistant reply
     const reply = {
       role: "assistant",
-      content: generatedImageUrl,
+      content: aiImageUrl,
       timestamp: Date.now(),
       isImage: true,
       isPublished,
     };
 
-    // ✅ Push reply and save
     chat.messages.push(reply);
     await chat.save();
 
-    // ✅ Deduct 2 credits
+    // ✅ Deduct credits
     await User.updateOne({ _id: userId }, { $inc: { credits: -2 } });
 
-    console.log("✅ Image generated successfully:", generatedImageUrl);
+    console.log("✅ Image generated successfully:", aiImageUrl);
     return res.status(200).json({ success: true, reply });
+
   } catch (error) {
     console.log("❌ Error in Image Message Controller:", error.message);
     if (error.response) {
@@ -115,6 +109,8 @@ export const imageMessageController = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
 
 
 //This api call is for jusr checking the image generation purpose
