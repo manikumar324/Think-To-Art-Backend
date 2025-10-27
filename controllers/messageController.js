@@ -8,9 +8,11 @@ import imagekit from "../configs/imageKit.js";
 //Text-based AI message controller
 
 export const textMessageController = async (req, res) => {
-   console.log("🟢 Text message controller triggered");
+  console.log("🟢 Text message controller triggered");
+
   try {
     const userId = req.user.userId;
+
     // ✅ Fetch user and check credits
     const user = await User.findById(userId);
     if (!user) {
@@ -19,38 +21,65 @@ export const textMessageController = async (req, res) => {
     if (user.credits < 1) {
       return res.status(403).json({ success: false, message: "Not enough credits" });
     }
-    const { chatId, prompt } = req.body;
 
+    const { chatId, prompt } = req.body;
     const chat = await Chat.findOne({ _id: chatId, userId });
+
+    // Push user message to chat
     chat.messages.push({
       role: "user",
       content: prompt,
       timestamp: Date.now(),
       isImage: false,
     });
-//AI response from Gemini API
-    const {choices} = await openai.chat.completions.create({
+
+    // ✅ Setup streaming response headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    // ✅ Stream AI response token-by-token
+    const stream = await openai.chat.completions.create({
       model: "gemini-2.0-flash",
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+      messages: [{ role: "user", content: prompt }],
+      stream: true, // <-- important for streaming
     });
-    const reply = {...choices[0].message,timestamp: Date.now(), isImage: false};
+
+    let fullResponse = "";
+
+    for await (const chunk of stream) {
+      const content = chunk?.choices?.[0]?.delta?.content || "";
+      if (content) {
+        fullResponse += content;
+        // Send partial data to frontend as it arrives
+        res.write(`data: ${JSON.stringify({ content })}\n\n`);
+      }
+    }
+
+    // ✅ When stream ends, close connection
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.end();
+
+    // ✅ Save AI reply in DB
+    const reply = {
+      role: "assistant",
+      content: fullResponse,
+      timestamp: Date.now(),
+      isImage: false,
+    };
     chat.messages.push(reply);
     await chat.save();
-    await User.updateOne({_id:userId}, { $inc: { "credits": -1 } });
-    console.log("AI Response:- ", reply);
-    return res
-      .status(200)
-      .json({ success: "true", message: "AI Response", reply });     
+
+    // ✅ Deduct credits
+    await User.updateOne({ _id: userId }, { $inc: { credits: -1 } });
+
+    console.log("✅ AI Response completed:", fullResponse.slice(0, 50) + "...");
   } catch (error) {
-    console.log("Error in Text Message Controller:- ", error.message);
-    return res.status(500).json({ success: "false", message: error.message });
+    console.log("❌ Error in Text Message Controller:", error.message);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 //Image Generation message controller
 export const imageMessageController = async (req, res) => {
