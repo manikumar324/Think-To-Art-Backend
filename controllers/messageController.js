@@ -38,11 +38,11 @@ export const textMessageController = async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    // ✅ Stream AI response token-by-token
+    // ✅ Stream AI response
     const stream = await openai.chat.completions.create({
       model: "gemini-2.0-flash",
       messages: [{ role: "user", content: prompt }],
-      stream: true, // <-- important for streaming
+      stream: true,
     });
 
     let fullResponse = "";
@@ -51,13 +51,13 @@ export const textMessageController = async (req, res) => {
       const content = chunk?.choices?.[0]?.delta?.content || "";
       if (content) {
         fullResponse += content;
-        // Send partial data to frontend as it arrives
-        res.write(`data: ${JSON.stringify({ content })}\n\n`);
+
+        // Send raw text chunks (no JSON)
+        res.write(content);
       }
     }
 
-    // ✅ When stream ends, close connection
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    // ✅ End of stream
     res.end();
 
     // ✅ Save AI reply in DB
@@ -79,6 +79,7 @@ export const textMessageController = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 
 //Image Generation message controller
