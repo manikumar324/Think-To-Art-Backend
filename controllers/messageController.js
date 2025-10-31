@@ -110,7 +110,7 @@ export const imageMessageController = async (req, res) => {
 
     // ✅ Generate the ImageKit AI URL (no axios.get)
     const encodedPrompt = encodeURIComponent(prompt);
-    const aiImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/mynewproject/${Date.now()}.png?tr=w-800,h-800`;
+    const aiImageUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}/ik-genimg-prompt-${encodedPrompt}/MyNewProject/${Date.now()}.png?tr=w-800,h-800`;
 
     // ✅ Assistant reply
     const reply = {
